@@ -1,8 +1,11 @@
-
 import React from 'react';
 import ScrollReveal from './ScrollReveal';
 
-const Hero: React.FC = () => {
+interface HeroProps {
+  onChat: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({ onChat }) => {
   return (
     <section className="relative h-screen flex items-center justify-center overflow-hidden">
       {/* Background with parallax-like feeling */}
@@ -39,7 +42,7 @@ const Hero: React.FC = () => {
             <a href="#listings" className="w-full sm:w-auto bg-white text-black px-10 py-4 rounded-full font-bold text-lg hover:bg-yellow-500 hover:scale-105 transition-all">
               Explore Listings
             </a>
-            <button onClick={() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })} className="w-full sm:w-auto glass px-10 py-4 rounded-full font-bold text-lg hover:bg-white/10 transition-all">
+            <button onClick={onChat} className="w-full sm:w-auto glass px-10 py-4 rounded-full font-bold text-lg hover:bg-white/10 transition-all">
               Talk to AI Agent
             </button>
           </div>

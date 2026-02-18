@@ -1,276 +1,370 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage, Property } from '../types';
-import { getAssistantResponseStream, generateLeadSummary } from '../services/geminiService';
-import { ABISAM_PHONE, MOCK_PROPERTIES } from '../constants';
+import { Property } from '../types';
+import { MOCK_PROPERTIES, ABISAM_PHONE } from '../constants';
 import PropertyCard from './PropertyCard';
+import { pushToGoogleSheets, openWhatsAppInquiry } from '../services/leadService';
+import { getGeminiResponse } from '../services/geminiService';
 
-const ChatInterface: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
+type ChatState =
+  | 'CHAT'
+  | 'NAME_INPUT'
+  | 'SCHEDULING'
+  | 'PHONE_INPUT'
+  | 'CONCLUSION';
+
+interface Message {
+  id: string;
+  role: 'assistant' | 'user';
+  text: string;
+  type?: 'text' | 'property-grid' | 'date-selection';
+  timestamp: Date;
+  dateOptions?: string[];
+  property?: Property; // Added property field
+}
+
+interface ChatInterfaceProps {
+  isOpen: boolean;
+  onToggle: (isOpen: boolean) => void;
+  contextProperty: Property | null;
+}
+
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onToggle, contextProperty }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentState, setCurrentState] = useState<ChatState>('CHAT');
+  const [userInput, setUserInput] = useState('');
+  const [leadData, setLeadData] = useState({
+    name: '',
+    phone: '',
+    property: '',
+    date: '',
+    timestamp: ''
+  });
   const [isTyping, setIsTyping] = useState(false);
-  const [showHandoff, setShowHandoff] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    setMessages([{
-      id: 'init',
-      role: 'assistant',
-      text: "Welcome to Abisam Properties. I'm your elite AI sales partner for the Abeokuta market. Are you looking to Buy, Rent, or Sell today?",
-      timestamp: new Date()
-    }]);
-  }, []);
+  const prevContextRef = useRef<string | undefined>(undefined);
+  const hasGreetingRun = useRef(false);
 
+  // Initialize Chat
+  useEffect(() => {
+    if (contextProperty && contextProperty.title !== prevContextRef.current) {
+      prevContextRef.current = contextProperty.title;
+      handleContextStart(contextProperty);
+    } else if (messages.length === 0 && !hasGreetingRun.current) {
+      addSystemMessage("Hello! I am your Abisam Senior Consultant. I can help you find the perfect home or land investment in Abeokuta. What is your budget or preferred location?");
+      hasGreetingRun.current = true;
+    }
+  }, [contextProperty]);
+
+  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, isOpen]);
 
-  const cleanTextOutput = (text: string) => {
-    // Remove property tokens
-    let cleaned = text.replace(/\[PROP:\d+\]/g, '');
-    // Remove markdown symbols strictly
-    cleaned = cleaned.replace(/[*#_~`>|]/g, '');
-    // Replace multiple newlines with single ones for a clean look
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-    return cleaned.trim();
+  const getNextDates = () => {
+    const days = [1, 3, 6];
+    const today = new Date();
+    const nextDates: string[] = [];
+
+    days.forEach(dayIndex => {
+      const d = new Date();
+      const diff = (dayIndex + 7 - today.getDay()) % 7;
+      const daysToAdd = diff === 0 ? 7 : diff;
+      d.setDate(today.getDate() + daysToAdd);
+      nextDates.push(d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }));
+    });
+    return nextDates;
   };
 
-  const findPropertyFromToken = (text: string): Property | undefined => {
-    const match = text.match(/\[PROP:(\d+)\]/);
-    if (match) {
-      const propId = match[1];
-      return MOCK_PROPERTIES.find(p => p.id === propId);
-    }
-    return undefined;
+  const addSystemMessage = (text: string, delay = 800, type: Message['type'] = 'text', dateOptions?: string[], property?: Property) => {
+    setIsTyping(true);
+    setTimeout(() => {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        text,
+        type,
+        dateOptions,
+        property,
+        timestamp: new Date()
+      }]);
+      setIsTyping(false);
+    }, delay);
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isTyping) return;
-
-    const userMsg: ChatMessage = {
+  const addUserMessage = (text: string) => {
+    setMessages(prev => [...prev, {
       id: Date.now().toString(),
       role: 'user',
-      text: input,
+      text,
       timestamp: new Date()
-    };
+    }]);
+  };
 
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
+  const handleContextStart = async (property: Property) => {
+    if (!isOpen) onToggle(true);
+
+    // Reset to chat mode but keep history? Better to clear for new context or just append?
+    // Let's clear to focus.
+    setMessages([]);
+    setCurrentState('CHAT');
+
+    // Simulate user asking about it (hidden or visible? Visible is better for context)
+    const userQuery = `Tell me about ${property.title}`;
+    addUserMessage(userQuery);
+
+    handleAIQuery(userQuery);
+  };
+
+  const handleAIQuery = async (query: string) => {
     setIsTyping(true);
 
-    const history = messages.concat(userMsg).map(m => ({
-      role: m.role === 'user' ? 'user' : 'model',
+    // Filter history to ensure it starts with a USER message to satisfy Gemini API requirements
+    const firstUserIndex = messages.findIndex(m => m.role === 'user');
+    const validMessages = firstUserIndex !== -1 ? messages.slice(firstUserIndex) : [];
+
+    const history = validMessages.map(m => ({
+      role: m.role === 'user' ? 'user' as const : 'model' as const,
       parts: [{ text: m.text }]
     }));
 
-    try {
-      const assistantId = (Date.now() + 1).toString();
-      let fullText = "";
+    const responseText = await getGeminiResponse(history, query);
 
-      // Pre-emptive message slot to reduce perceived latency
-      setMessages(prev => [...prev, {
-        id: assistantId,
-        role: 'assistant',
-        text: "",
-        timestamp: new Date()
-      }]);
+    // Check for [BOOK: ID] token (High Priority)
+    const bookMatch = responseText.match(/\[BOOK:\s*(.*?)\]/);
 
-      const stream = await getAssistantResponseStream(history);
+    // Check for [CARD: ID] token
+    const cardMatch = responseText.match(/\[CARD:\s*(.*?)\]/);
 
-      let firstChunkReceived = false;
+    if (bookMatch) {
+      const propertyId = bookMatch[1];
+      const property = MOCK_PROPERTIES.find(p => p.id === propertyId);
+      const cleanText = responseText.replace(/\[BOOK:.*?\]/, '').trim();
 
-      for await (const chunk of stream) {
-        if (!firstChunkReceived) {
-          setIsTyping(false); // Hide the loading indicator as soon as text starts flowing
-          firstChunkReceived = true;
-        }
+      addSystemMessage(cleanText, 0);
 
-        const chunkText = chunk.text;
-        fullText += chunkText;
+      if (property) {
+        setLeadData(prev => ({ ...prev, property: property.title }));
+        setTimeout(() => {
+          setCurrentState('NAME_INPUT');
+          addSystemMessage(`Great. To finalize the inspection for ${property.title}, may I have your full name?`);
+        }, 1000);
+      } else {
+        // Fallback if ID is weird
+        setCurrentState('NAME_INPUT');
+        addSystemMessage("Excellent. May I have your name to proceed with the booking?");
+      }
+    } else if (cardMatch) {
+      const propertyId = cardMatch[1];
+      const property = MOCK_PROPERTIES.find(p => p.id === propertyId);
+      const cleanText = responseText.replace(/\[CARD:.*?\]/, '').trim();
 
-        const foundProp = findPropertyFromToken(fullText);
+      // 1. Add the text response
+      addSystemMessage(cleanText, 0);
 
-        setMessages(prev => prev.map(m =>
-          m.id === assistantId
-            ? {
-              ...m,
-              text: cleanTextOutput(fullText),
-              property: foundProp || m.property
-            }
-            : m
-        ));
-
-        if (fullText.length > 40 && !showHandoff) setShowHandoff(true);
+      // 2. If property found, add the Card component bubble
+      if (property) {
+        addSystemMessage('', 400, 'property-grid', undefined, property);
       }
 
-      if (fullText.toLowerCase().includes('whatsapp') || messages.length > 2) {
-        setShowHandoff(true);
-      }
-
-    } catch (error) {
-      console.error("AI Error:", error);
-      setMessages(prev => [...prev, {
-        id: 'error-' + Date.now(),
-        role: 'assistant',
-        text: "I'm experiencing a high volume of requests. Please use the WhatsApp button to connect with our team directly.",
-        timestamp: new Date()
-      }]);
-      setShowHandoff(true);
-      setIsTyping(false);
+    } else {
+      // Normal response
+      addSystemMessage(responseText, 0);
     }
   };
 
-  const handleWhatsAppHandoff = async () => {
-    const chatTranscript = messages.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n');
-    const lead = await generateLeadSummary(chatTranscript);
+  const handleNameSubmit = () => {
+    if (!userInput.trim()) return;
+    const name = userInput.trim();
+    setLeadData(prev => ({ ...prev, name }));
+    addUserMessage(name);
+    setUserInput('');
 
-    const waText = `*ABISAM AI LEAD PROFILE*
----------------------------
-*Goal:* ${lead.intent || 'Unknown'}
-*Location:* ${lead.location || 'Abeokuta'}
-*Budget:* ${lead.budget || 'N/A'}
-*Type:* ${lead.propertyType || 'Residential'}
-
-*Summary:* ${lead.summary}
-
-_Generated via Abisam Zero-Latency Ecosystem_`;
-
-    window.open(`https://wa.me/${ABISAM_PHONE}?text=${encodeURIComponent(waText)}`, '_blank');
+    setCurrentState('SCHEDULING');
+    const dates = getNextDates();
+    addSystemMessage(`Pleasure, ${name}. When will you be available for a live site visit?`, 800, 'date-selection', dates);
   };
 
+  const handleDateSelect = (date: string) => {
+    setLeadData(prev => ({ ...prev, date }));
+    addUserMessage(date);
+
+    setCurrentState('PHONE_INPUT');
+    addSystemMessage("Noted. Finally, please provide your WhatsApp number so we can send you the location pin.");
+  };
+
+  const handlePhoneSubmit = () => {
+    if (!userInput.trim()) return;
+    const phone = userInput.trim();
+    const finalLeadData = {
+      ...leadData,
+      phone,
+      timestamp: new Date().toISOString()
+    };
+
+    setLeadData(finalLeadData);
+    addUserMessage(phone);
+    setUserInput('');
+
+    pushToGoogleSheets(finalLeadData);
+
+    setCurrentState('CONCLUSION');
+    addSystemMessage(`Done. Your inspection is confirmed. A senior agent will contact you on ${phone} shortly.`);
+  };
+
+  const handleInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userInput.trim()) return;
+
+    if (currentState === 'CHAT') {
+      const text = userInput.trim();
+      addUserMessage(text);
+      setUserInput('');
+      handleAIQuery(text);
+      return;
+    }
+
+    if (currentState === 'NAME_INPUT') handleNameSubmit();
+    if (currentState === 'PHONE_INPUT') handlePhoneSubmit();
+  };
+
+  // Minimized State
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => onToggle(true)}
+        className="fixed bottom-6 right-6 z-50 group flex items-center justify-center p-0 border-0 outline-none focus:outline-none active:scale-90 transition-transform"
+      >
+        <span className="absolute right-full mr-4 bg-white text-black px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap shadow-xl">
+          Start Concierge
+        </span>
+        <div className="relative w-16 h-16 rounded-full bg-black border border-white/20 glass flex items-center justify-center shadow-[0_0_40px_rgba(255,215,0,0.2)] hover:scale-110 transition-all duration-300">
+          <div className="absolute inset-0 bg-yellow-500/20 rounded-full animate-ping opacity-20"></div>
+          <i className="fa-solid fa-robot text-yellow-500 text-2xl animate-spin-slow"></i>
+        </div>
+      </button>
+    );
+  }
+
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12 md:py-24" id="contact">
-      <div className="text-center mb-16">
-        <h2 className="text-5xl font-bold mb-4 tracking-tighter italic opacity-20">ZERO LATENCY</h2>
-        <h3 className="text-4xl font-bold -mt-10 mb-4">THE <span className="text-gradient underline decoration-yellow-500/30">ABISAM ASSISTANT</span></h3>
-        <p className="text-gray-500 max-w-lg mx-auto uppercase tracking-widest text-[10px] font-bold">Powered by Gemini-3 Flash for instant closures</p>
-      </div>
+    <div className="fixed bottom-0 left-0 right-0 md:bottom-6 md:left-auto md:right-6 z-[60] w-full md:w-[400px] h-[85dvh] md:h-[600px] md:max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-500 origin-bottom md:origin-bottom-right">
+      <div className="glass rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden flex flex-col h-full border-t md:border border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:shadow-[0_0_100px_rgba(0,0,0,0.5)] relative bg-[#0a0a0a]">
 
-      <div className="glass rounded-3xl md:rounded-[3.5rem] overflow-hidden flex flex-col h-[85vh] md:h-[750px] border border-white/5 shadow-[0_0_100px_rgba(255,215,0,0.05)] relative">
-        {/* Decorative background glow */}
-        <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/5 blur-[120px] pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-orange-500/5 blur-[120px] pointer-events-none"></div>
+        {/* Mobile Drag Handle Visual */}
+        <div className="md:hidden absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/20 rounded-full z-20 pointer-events-none"></div>
 
-        <div className="p-4 md:p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.01] backdrop-blur-md relative z-10">
-          <div className="flex items-center gap-5">
-            <div className="relative group">
-              <div className="absolute -inset-1 bg-gradient-to-tr from-yellow-500 to-orange-500 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-500"></div>
-              <div className="relative w-14 h-14 rounded-2xl bg-black flex items-center justify-center float-anim border border-white/10">
-                <i className="fa-solid fa-bolt-lightning text-yellow-500 text-2xl"></i>
+        {/* Header */}
+        <div className="p-5 border-b border-white/5 flex items-center justify-between bg-white/[0.03] backdrop-blur-md relative z-10 cursor-pointer" onClick={() => onToggle(false)}>
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-xl bg-black flex items-center justify-center border border-white/10">
+                <i className="fa-solid fa-robot text-yellow-500 text-lg"></i>
               </div>
-              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-black animate-pulse"></div>
+              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black"></div>
             </div>
             <div>
-              <h4 className="font-bold text-lg tracking-tight">Abisam Concierge</h4>
-              <p className="text-[9px] text-yellow-500/80 font-bold tracking-[0.2em] uppercase">Status: Live & Verified</p>
+              <h4 className="font-bold text-sm tracking-tight text-white">Abisam Elite AI</h4>
+              <p className="text-[9px] text-yellow-500/80 font-bold tracking-[0.2em] uppercase">Online | Consultant</p>
             </div>
           </div>
           <button
-            onClick={() => { setMessages([messages[0]]); setShowHandoff(false); }}
-            className="w-11 h-11 rounded-full glass hover:bg-white/10 transition-all flex items-center justify-center border-white/10"
+            onClick={(e) => { e.stopPropagation(); onToggle(false); }}
+            className="w-8 h-8 rounded-full hover:bg-white/10 transition-all flex items-center justify-center text-gray-400"
           >
-            <i className="fa-solid fa-rotate-left text-xs text-gray-400"></i>
+            <i className="fa-solid fa-chevron-down"></i>
           </button>
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 md:space-y-8 scroll-smooth relative z-10 custom-scrollbar">
+        {/* Chat Area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4 scroll-smooth relative z-10 custom-scrollbar bg-black/50">
           {messages.map((msg) => (
-            <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-              <div className={`max-w-[85%] p-6 rounded-[2rem] ${msg.role === 'user'
-                ? 'bg-gradient-to-br from-yellow-500 to-orange-600 text-black font-bold shadow-xl shadow-yellow-500/10'
-                : 'glass text-gray-200 border-white/5 bg-white/[0.02]'
-                }`}>
-                <p className="text-[16px] leading-relaxed whitespace-pre-wrap">{msg.text || "Thinking..."}</p>
-                <div className="mt-4 flex items-center justify-between opacity-30">
-                  <span className="text-[9px] uppercase font-black tracking-[0.2em]">{msg.role === 'user' ? 'Direct Buyer' : 'Abisam Agent'}</span>
-                  <span className="text-[9px] font-bold">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+
+              {/* TEXT MESSAGE */}
+              {msg.text && (
+                <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${msg.role === 'user'
+                  ? 'bg-gradient-to-br from-yellow-500 to-orange-600 text-black font-bold shadow-lg'
+                  : 'glass text-gray-200 border-white/5 bg-white/[0.05]'
+                  }`}>
+                  <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                 </div>
-              </div>
-              {msg.property && (
-                <div className="w-full max-w-[340px] transform hover:scale-[1.02] transition-transform animate-in zoom-in-95 duration-700">
-                  <div className="relative group">
-                    <div className="absolute -inset-0.5 bg-yellow-500/20 rounded-[2.5rem] blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                    <div className="relative bg-black/40 border border-white/5 p-2 rounded-[2.5rem]">
-                      <div className="text-[9px] font-black text-center text-yellow-500/50 uppercase tracking-[0.3em] my-2">Verified Selection</div>
-                      <PropertyCard property={msg.property} onSelect={() => { }} />
-                    </div>
-                  </div>
+              )}
+
+              {/* CARD MESSAGE */}
+              {msg.type === 'property-grid' && msg.property && (
+                <div className="w-[85%] self-start transform scale-95 origin-left mb-2">
+                  <PropertyCard property={msg.property} onSelect={() => { }} onChat={undefined} />
+                </div>
+              )}
+
+              {/* DATE SELECTION */}
+              {msg.type === 'date-selection' && msg.dateOptions && (
+                <div className="flex flex-col gap-2">
+                  {msg.dateOptions.map(day => (
+                    <button
+                      key={day}
+                      onClick={() => handleDateSelect(day)}
+                      className="glass w-full px-5 py-3 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-yellow-500 hover:text-black transition-all border-white/10 flex justify-between items-center group"
+                    >
+                      <span>{day}</span>
+                      <i className="fa-solid fa-chevron-right opacity-0 group-hover:opacity-100 transition-opacity"></i>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
           ))}
+
+          {/* CONCLUSION ACTION BUTTON - REMOVED AS REQUESTED */}
+          {currentState === 'CONCLUSION' && (
+            <div className="flex flex-col gap-3 mt-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+              {/* Button removed to prevent manual WhatsApp confirmation */}
+            </div>
+          )}
+
           {isTyping && (
-            <div className="flex justify-start animate-in fade-in duration-300">
-              <div className="glass px-8 py-5 rounded-[2rem] flex gap-2 items-center relative overflow-hidden">
-                {/* Shimmering indicator */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
-                <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce [animation-duration:1s]"></div>
-                <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce [animation-delay:0.2s] [animation-duration:1s]"></div>
-                <div className="w-2 h-2 bg-yellow-500 rounded-full animate-bounce [animation-delay:0.4s] [animation-duration:1s]"></div>
-              </div>
+            <div className="glass w-12 h-8 rounded-full flex items-center justify-center gap-1">
+              <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-bounce"></div>
+              <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-bounce [animation-delay:0.1s]"></div>
+              <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
             </div>
           )}
         </div>
 
-        {showHandoff && (
-          <div className="px-10 pb-6 animate-in fade-in slide-in-from-bottom-4 duration-1000 relative z-10">
-            <button
-              onClick={handleWhatsAppHandoff}
-              className="group w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-black py-6 rounded-2xl flex items-center justify-center gap-4 transition-all transform hover:translate-y-[-4px] shadow-2xl shadow-green-500/20 active:scale-95"
-            >
-              <i className="fa-brands fa-whatsapp text-2xl group-hover:scale-110 transition-transform"></i>
-              START WHATSAPP HANDOFF
-              <i className="fa-solid fa-arrow-right text-xs opacity-50 group-hover:translate-x-1 transition-all"></i>
-            </button>
-          </div>
-        )}
-
-        <div className="p-10 bg-white/[0.01] border-t border-white/5 relative z-10 backdrop-blur-sm">
-          <div className="relative group">
-            <div className="absolute -inset-1 bg-yellow-500/10 rounded-3xl blur opacity-0 group-focus-within:opacity-100 transition duration-500"></div>
+        {/* Input Area */}
+        <div className="p-4 bg-white/[0.03] border-t border-white/5 relative z-10 backdrop-blur-sm">
+          <form onSubmit={handleInputSubmit} className="relative group flex gap-2">
             <input
               type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Ask about properties in Adigbe, Camp, Oke-Mosan..."
-              className="relative w-full bg-white/[0.03] border border-white/10 rounded-2xl pl-8 pr-20 py-6 focus:outline-none focus:border-yellow-500/40 transition-all text-base font-medium placeholder:text-gray-600 shadow-inner"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              disabled={['SCHEDULING', 'CONCLUSION'].includes(currentState)}
+              placeholder={
+                currentState === 'NAME_INPUT' ? "Enter your full name..." :
+                  currentState === 'PHONE_INPUT' ? "Enter WhatsApp number..." :
+                    "Message Abisam AI..."
+              }
+              className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-yellow-500/40 transition-all text-sm font-medium placeholder:text-gray-600 disabled:opacity-50"
             />
             <button
-              onClick={handleSend}
-              disabled={isTyping || !input.trim()}
-              className="absolute right-4 top-1/2 -translate-y-1/2 bg-white text-black w-12 h-12 rounded-xl flex items-center justify-center hover:bg-yellow-500 disabled:opacity-20 transition-all active:scale-90 shadow-xl"
+              type="submit"
+              disabled={!userInput.trim() || ['SCHEDULING', 'CONCLUSION'].includes(currentState)}
+              className="bg-yellow-500 text-black w-10 h-10 rounded-xl flex items-center justify-center hover:bg-white disabled:opacity-50 transition-all font-bold"
             >
-              <i className="fa-solid fa-paper-plane text-sm"></i>
+              <i className="fa-solid fa-arrow-up"></i>
             </button>
-          </div>
-          <div className="flex justify-between items-center mt-6 px-2">
-            <p className="text-[9px] text-gray-700 font-black tracking-[0.3em] uppercase">Verified Land Registry Sync</p>
-            <p className="text-[9px] text-yellow-500/40 font-black tracking-[0.3em] uppercase">Abeokuta Real Estate Hub</p>
-          </div>
+          </form>
         </div>
       </div>
-
       <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 215, 0, 0.1);
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(255, 215, 0, 0.2);
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 215, 0, 0.2); border-radius: 10px; }
+        .animate-spin-slow { animation: spin 8s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );

@@ -5,13 +5,13 @@ const Navbar: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-      <div className="max-w-7xl mx-auto glass rounded-full px-6 md:px-8 py-4 flex items-center justify-between relative z-50">
+    <nav className="fixed top-0 left-0 right-0 z-50 p-0 md:px-6 md:py-4">
+      <div className="max-w-7xl mx-auto glass w-full md:w-auto rounded-none md:rounded-full px-5 md:px-8 py-4 md:py-4 flex items-center justify-between relative z-50 border-x-0 border-t-0 md:border">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
-            <span className="text-black font-bold">A</span>
+          <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center shadow-lg shadow-yellow-500/20">
+            <span className="text-black font-black text-sm">A</span>
           </div>
-          <span className="text-lg md:text-xl font-bold tracking-tighter uppercase">Abisam <span className="text-yellow-500">Properties</span></span>
+          <span className="text-base md:text-xl font-bold tracking-tighter uppercase">Abisam <span className="text-yellow-500">Properties</span></span>
         </div>
 
         {/* Desktop Menu */}
@@ -36,16 +36,16 @@ const Navbar: React.FC = () => {
       </div>
 
       {/* Mobile Menu Overlay */}
-      <div className={`fixed inset-0 bg-black/95 backdrop-blur-xl z-40 transition-all duration-500 md:hidden ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-        <div className="flex flex-col items-center justify-center h-full gap-8">
-          <a href="#" onClick={() => setIsMobileMenuOpen(false)} className="text-3xl font-black uppercase tracking-tighter hover:text-yellow-500 transition-colors">Home</a>
-          <a href="#listings" onClick={() => setIsMobileMenuOpen(false)} className="text-3xl font-black uppercase tracking-tighter hover:text-yellow-500 transition-colors">Listings</a>
-          <a href="#about-us" onClick={() => setIsMobileMenuOpen(false)} className="text-3xl font-black uppercase tracking-tighter hover:text-yellow-500 transition-colors">About</a>
-          <a href="#contact" onClick={() => setIsMobileMenuOpen(false)} className="text-3xl font-black uppercase tracking-tighter hover:text-yellow-500 transition-colors">Contact</a>
+      <div className={`fixed inset-0 bg-black/95 backdrop-blur-2xl z-40 transition-all duration-500 md:hidden flex flex-col items-center justify-center ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex flex-col items-center gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-100">
+          <a href="#" onClick={() => setIsMobileMenuOpen(false)} className="text-4xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 hover:to-yellow-500 transition-all">Home</a>
+          <a href="#listings" onClick={() => setIsMobileMenuOpen(false)} className="text-4xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 hover:to-yellow-500 transition-all">Listings</a>
+          <a href="#about-us" onClick={() => setIsMobileMenuOpen(false)} className="text-4xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 hover:to-yellow-500 transition-all">About</a>
+          <a href="#contact" onClick={() => setIsMobileMenuOpen(false)} className="text-4xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 hover:to-yellow-500 transition-all">Contact</a>
 
           <div className="h-px w-24 bg-white/10 my-4"></div>
 
-          <button className="bg-yellow-500 text-black px-8 py-4 rounded-full text-lg font-black uppercase tracking-widest hover:scale-105 transition-all">
+          <button className="bg-yellow-500 text-black px-10 py-4 rounded-full text-lg font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl shadow-yellow-500/20">
             List a Property
           </button>
         </div>

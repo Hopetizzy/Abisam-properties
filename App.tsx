@@ -13,6 +13,15 @@ import { Property } from './types';
 
 const App: React.FC = () => {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatContext, setChatContext] = useState<Property | null>(null);
+
+  const handleOpenChat = (property?: Property) => {
+    if (property) {
+      setChatContext(property);
+    }
+    setIsChatOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-[#050505]">
@@ -41,12 +50,9 @@ const App: React.FC = () => {
           letter-spacing: 0.1em;
         }
       `}</style>
-
       <Navbar />
-
       <main>
-        <Hero />
-
+        <Hero onChat={() => handleOpenChat()} />
         {/* Crazy Ticker Section */}
         <div className="ticker-wrap border-y border-black/10">
           <div className="ticker-content">
@@ -58,13 +64,10 @@ const App: React.FC = () => {
             ))}
           </div>
         </div>
-
         {/* About Us Section */}
         <AboutUs />
-
         {/* Trust & Reviews Section */}
         <GoogleReviews />
-
         {/* Featured Listings */}
         <section className="py-20 md:py-32 px-6" id="listings">
           <div className="max-w-7xl mx-auto">
@@ -84,18 +87,17 @@ const App: React.FC = () => {
                 <div className="h-1 w-24 bg-yellow-500"></div>
               </ScrollReveal>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
               {MOCK_PROPERTIES.map((p, i) => (
                 <ScrollReveal key={p.id} delay={i * 100} animation="fade-up">
                   <PropertyCard
                     property={p}
                     onSelect={(prop) => setSelectedProperty(prop)}
+                    onChat={handleOpenChat}
                   />
                 </ScrollReveal>
               ))}
             </div>
-
             <ScrollReveal delay={400} className="mt-24 flex justify-center">
               <button className="group relative glass px-16 py-6 rounded-full overflow-hidden transition-all hover:pr-20">
                 <span className="relative z-10 font-black uppercase tracking-[0.2em] text-sm">Download Full Catalog</span>
@@ -105,7 +107,6 @@ const App: React.FC = () => {
             </ScrollReveal>
           </div>
         </section>
-
         {/* Statistics "Crazy" Section */}
         <section className="py-12 md:py-20 px-6 border-y border-white/5 bg-[#080808]">
           <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-12">
@@ -124,10 +125,8 @@ const App: React.FC = () => {
             ))}
           </div>
         </section>
-
-        <ChatInterface />
+        {/* Removed inline ChatInterface */}
       </main>
-
       <footer className="py-20 md:py-32 px-6 border-t border-white/5 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-yellow-500/5 blur-[120px] rounded-full"></div>
         <div className="max-w-7xl mx-auto">
@@ -148,7 +147,6 @@ const App: React.FC = () => {
                 ))}
               </div>
             </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-16">
               <div>
                 <h5 className="font-black mb-8 uppercase tracking-[0.2em] text-[11px] text-white">Hubs</h5>
@@ -179,7 +177,6 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-
           <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
             <div className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">
               &copy; 2024 Abisam Properties Ecosystem • Built with AI Precision
@@ -192,7 +189,6 @@ const App: React.FC = () => {
           </div>
         </div>
       </footer>
-
       {/* Property Details Modal */}
       {selectedProperty && (
         <PropertyModal
@@ -201,6 +197,13 @@ const App: React.FC = () => {
           onClose={() => setSelectedProperty(null)}
         />
       )}
+
+      {/* Floating Chat Interface */}
+      <ChatInterface
+        isOpen={isChatOpen}
+        onToggle={setIsChatOpen}
+        contextProperty={chatContext}
+      />
     </div>
   );
 };
