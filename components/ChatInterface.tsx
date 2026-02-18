@@ -236,7 +236,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onToggle, context
     return (
       <button
         onClick={() => onToggle(true)}
-        className="fixed bottom-6 right-6 z-50 group flex items-center justify-center p-0 border-0 outline-none focus:outline-none active:scale-90 transition-transform"
+        className="fixed bottom-24 right-5 md:bottom-10 md:right-10 z-50 group flex items-center justify-center p-0 border-0 outline-none focus:outline-none active:scale-90 transition-transform"
       >
         <span className="absolute right-full mr-4 bg-white text-black px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap shadow-xl">
           Start Concierge
@@ -250,8 +250,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ isOpen, onToggle, context
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 md:bottom-6 md:left-auto md:right-6 z-[60] w-full md:w-[400px] h-[85dvh] md:h-[600px] md:max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-500 origin-bottom md:origin-bottom-right">
-      <div className="glass rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden flex flex-col h-full border-t md:border border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] md:shadow-[0_0_100px_rgba(0,0,0,0.5)] relative bg-[#0a0a0a]">
+    <div className="fixed bottom-0 left-0 right-0 md:bottom-6 md:left-auto md:right-6 z-[60] w-full md:w-[400px] h-[75dvh] md:h-[600px] md:max-h-[80vh] flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-500 origin-bottom md:origin-bottom-right shadow-2xl md:shadow-none">
+      <div className="bg-[#0a0a0a] md:glass rounded-t-[2.5rem] md:rounded-[2.5rem] overflow-hidden flex flex-col h-full border-t border-white/10 md:border shadow-[0_-10px_40px_rgba(0,0,0,0.8)] md:shadow-[0_0_100px_rgba(0,0,0,0.5)] relative">
 
         {/* Mobile Drag Handle Visual */}
         <div className="md:hidden absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/20 rounded-full z-20 pointer-events-none"></div>

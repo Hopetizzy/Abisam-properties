@@ -6,7 +6,7 @@ const Navbar: React.FC = () => {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 p-0 md:px-6 md:py-4">
-      <div className="max-w-7xl mx-auto glass w-full md:w-auto rounded-none md:rounded-full px-5 md:px-8 py-4 md:py-4 flex items-center justify-between relative z-50 border-x-0 border-t-0 md:border">
+      <div className="max-w-7xl mx-auto bg-[#050505] md:glass w-full md:w-auto rounded-none md:rounded-full px-5 md:px-8 py-4 md:py-4 flex items-center justify-between relative z-50 border-b border-white/10 md:border-b-0 md:border-x md:border-t">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center shadow-lg shadow-yellow-500/20">
             <span className="text-black font-black text-sm">A</span>

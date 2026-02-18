@@ -27,7 +27,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, onSelect, onChat 
         {onChat && (
           <button
             onClick={(e) => { e.stopPropagation(); onChat(property); }}
-            className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full glass bg-black/50 border-white/10 flex items-center justify-center text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all duration-300 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
+            className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full glass bg-black/50 border-white/10 flex items-center justify-center text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all duration-300 opacity-100 translate-y-0 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0"
             title="Ask AI about this property"
           >
             <i className="fa-solid fa-robot"></i>
